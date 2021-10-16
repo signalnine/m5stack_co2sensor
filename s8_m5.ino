@@ -9,7 +9,7 @@ SoftwareSerial s8_Serial(13,14); //connect rx & tx from s8 to GPIO pins 13 & 14
 
 byte readCO2[] = {0xFE, 0X44, 0X00, 0X08, 0X02, 0X9F, 0X25};  //Command packet to read Co2
 byte response[] = {0,0,0,0,0,0,0};
-int valMultiplier = 1;
+int valMultiplier = 1; //different models of sensor need other values here
 
 const char* mqtt_server = "IP_OF_MQTT_BROKER";
 const char* mqtt_port = "PORT_OF_MQTT_BROKER";
@@ -19,7 +19,6 @@ WiFiClient client;
 Adafruit_MQTT_Client mqtt(&client, mqtt_server, mqtt_port);
 #define FEED "esp32/co2"
 Adafruit_MQTT_Publish co2 = Adafruit_MQTT_Publish(&mqtt, FEED);
-TFT_eSprite disp(&M5.Lcd);
 
 void setup() 
 {
