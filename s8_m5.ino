@@ -71,6 +71,11 @@ void loop()
 
 void sendRequest(byte packet[])
 {
+  // Drain any stale bytes left over from a previous exchange so we don't
+  // short-circuit the write/read loops below and read a previous response.
+  while (s8_Serial.available())
+    s8_Serial.read();
+
   while(!s8_Serial.available())  //keep sending request until we start to get a response
   {
     s8_Serial.write(packet,7);
