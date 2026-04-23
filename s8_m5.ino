@@ -73,7 +73,7 @@ void sendRequest(byte packet[])
 {
   while(!s8_Serial.available())  //keep sending request until we start to get a response
   {
-    s8_Serial.write(readCO2,7);
+    s8_Serial.write(packet,7);
     delay(50);
   }
 
