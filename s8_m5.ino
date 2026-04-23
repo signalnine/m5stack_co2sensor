@@ -44,21 +44,34 @@ void setup()
   
 }
 
-void loop() 
-{ 
+void loop()
+{
   int xpos = 105;
   int ypos = 90;
-  sendRequest(readCO2);
+  bool ok = sendRequest(readCO2);
+  M5.Lcd.clear();
+  M5.Lcd.setCursor(xpos, ypos);
+  M5.Lcd.setTextSize(255);
+
+  if (!ok) {
+    // Don't render a stale/zero value in green -- that would look like
+    // "excellent air" when the sensor is actually unreachable. Show an
+    // error instead and skip the MQTT publish so consumers don't record
+    // a false zero reading.
+    Serial.println("Co2 read failed, skipping publish");
+    M5.Lcd.setTextColor(TFT_RED);
+    M5.Lcd.print("ERR");
+    delay(5000);
+    return;
+  }
+
   unsigned long valCO2 = getValue(response);
   Serial.print("Co2 ppm = ");
   Serial.println(valCO2);
-  M5.Lcd.clear();
   int co2int = (int)valCO2;
   if (valCO2 < 500) { M5.Lcd.setTextColor(TFT_GREEN); }
   if (valCO2 >= 500 && valCO2 < 700) { M5.Lcd.setTextColor(TFT_YELLOW); }
   if (valCO2 >= 700) { M5.Lcd.setTextColor(TFT_RED); }
-  M5.Lcd.setCursor(xpos, ypos);
-  M5.Lcd.setTextSize(255);
   M5.Lcd.print(valCO2);
   MQTT_connect();
   if (! co2.publish(co2int)) {
@@ -69,17 +82,23 @@ void loop()
   delay(5000);
 }
 
-void sendRequest(byte packet[])
+bool sendRequest(byte packet[])
 {
   // Drain any stale bytes left over from a previous exchange so we don't
   // short-circuit the write/read loops below and read a previous response.
   while (s8_Serial.available())
     s8_Serial.read();
 
+  int writeAttempts = 0;
   while(!s8_Serial.available())  //keep sending request until we start to get a response
   {
     s8_Serial.write(packet,7);
     delay(50);
+    writeAttempts++;
+    if (writeAttempts > 20) {  // ~1s with no reply from the sensor
+      Serial.println("S8 sensor not responding");
+      return false;
+    }
   }
 
   int timeout=0;  //set a timeout counter
@@ -91,7 +110,8 @@ void sendRequest(byte packet[])
         while(s8_Serial.available())  //flush
           s8_Serial.read();
 
-          break;    //exit and try again
+        Serial.println("S8 response timeout");
+        return false;
       }
       delay(50);
   }
@@ -104,11 +124,10 @@ void sendRequest(byte packet[])
   // Validate response packet
   if (response[0] != 0xFE || response[1] != 0x44) {
     Serial.println("Invalid S8 response packet!");
-    // Set response to zeros to indicate error
-    for (int i=0; i < 7; i++) {
-      response[i] = 0;
-    }
+    return false;
   }
+
+  return true;
 }
 
 unsigned long getValue(byte packet[])
