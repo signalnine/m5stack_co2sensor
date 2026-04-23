@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "m5stack_co2sensor",
+  "project_id": "9ccea611-75e9-4c90-ae31-f6ca548a2678"
+}
