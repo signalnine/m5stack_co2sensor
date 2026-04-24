@@ -73,13 +73,47 @@ void loop()
   if (valCO2 >= 500 && valCO2 < 700) { M5.Lcd.setTextColor(TFT_YELLOW); }
   if (valCO2 >= 700) { M5.Lcd.setTextColor(TFT_RED); }
   M5.Lcd.print(valCO2);
-  MQTT_connect();
-  if (! co2.publish(co2int)) {
-    Serial.println(F("Failed"));
-  } else {
-    Serial.println(F("OK!"));
+
+  // Skip MQTT entirely if WiFi is down. Otherwise mqtt.connect() drives
+  // a TCP attempt through a dead stack and blocks for its full timeout
+  // every iteration, starving the sensor-read cadence.
+  if (ensureWiFi()) {
+    MQTT_connect();
+    if (! co2.publish(co2int)) {
+      Serial.println(F("Failed"));
+    } else {
+      Serial.println(F("OK!"));
+    }
   }
   delay(5000);
+}
+
+// Re-establish WiFi if it has dropped since setup(). Without this the
+// device silently becomes useless after any router reboot or signal
+// glitch -- MQTT keeps failing but WiFi is never restarted.
+bool ensureWiFi()
+{
+  if (WiFi.status() == WL_CONNECTED) {
+    return true;
+  }
+
+  Serial.println("WiFi disconnected, attempting reconnect...");
+  WiFi.reconnect();
+
+  int timeout = 0;
+  while (WiFi.status() != WL_CONNECTED && timeout < 10) {
+    delay(1000);
+    timeout++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi reconnected: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  }
+
+  Serial.println("WiFi reconnect failed, skipping MQTT this cycle");
+  return false;
 }
 
 bool sendRequest(byte packet[])
