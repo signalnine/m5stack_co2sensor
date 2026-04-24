@@ -127,7 +127,33 @@ bool sendRequest(byte packet[])
     return false;
   }
 
+  // Verify Modbus CRC16 over bytes 0..4; bytes 5,6 are CRC low,high.
+  // Without this, serial noise can flip the CO2 bytes while leaving
+  // the header intact and we would report a bogus reading.
+  uint16_t expectedCrc = modbusCRC16(response, 5);
+  uint16_t receivedCrc = (uint16_t)response[5] | ((uint16_t)response[6] << 8);
+  if (expectedCrc != receivedCrc) {
+    Serial.println("S8 response CRC mismatch");
+    return false;
+  }
+
   return true;
+}
+
+uint16_t modbusCRC16(const byte *data, size_t len)
+{
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < len; i++) {
+    crc ^= data[i];
+    for (uint8_t b = 0; b < 8; b++) {
+      if (crc & 0x0001) {
+        crc = (crc >> 1) ^ 0xA001;
+      } else {
+        crc >>= 1;
+      }
+    }
+  }
+  return crc;
 }
 
 unsigned long getValue(byte packet[])
