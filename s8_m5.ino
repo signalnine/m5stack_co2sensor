@@ -49,9 +49,11 @@ void loop()
   int xpos = 105;
   int ypos = 90;
   bool ok = sendRequest(readCO2);
-  M5.Lcd.clear();
+  // Clear only the value band instead of the whole 320x240 framebuffer to
+  // avoid the visible black flash on every loop iteration.
+  M5.Lcd.fillRect(0, ypos, 320, 60, TFT_BLACK);
   M5.Lcd.setCursor(xpos, ypos);
-  M5.Lcd.setTextSize(255);
+  M5.Lcd.setTextSize(7);
 
   if (!ok) {
     // Don't render a stale/zero value in green -- that would look like
@@ -68,7 +70,6 @@ void loop()
   unsigned long valCO2 = getValue(response);
   Serial.print("Co2 ppm = ");
   Serial.println(valCO2);
-  int co2int = (int)valCO2;
   if (valCO2 < 500) { M5.Lcd.setTextColor(TFT_GREEN); }
   if (valCO2 >= 500 && valCO2 < 700) { M5.Lcd.setTextColor(TFT_YELLOW); }
   if (valCO2 >= 700) { M5.Lcd.setTextColor(TFT_RED); }
@@ -79,7 +80,9 @@ void loop()
   // every iteration, starving the sensor-read cadence.
   if (ensureWiFi()) {
     MQTT_connect();
-    if (! co2.publish(co2int)) {
+    // Publish as uint32_t so non-default valMultiplier values can't push
+    // the reading past INT_MAX and produce a negative ppm on the wire.
+    if (! co2.publish((uint32_t)valCO2)) {
       Serial.println(F("Failed"));
     } else {
       Serial.println(F("OK!"));
@@ -199,8 +202,6 @@ unsigned long getValue(byte packet[])
 }
 
 void MQTT_connect() {
-  int8_t ret;
-
   // Stop if already connected.
   if (mqtt.connected()) {
     return;
@@ -208,17 +209,17 @@ void MQTT_connect() {
 
   Serial.print("Connecting to MQTT... ");
 
-  uint8_t retries = 3;
-  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-       Serial.println(mqtt.connectErrorString(ret));
-       Serial.println("Retrying MQTT connection in 5 seconds...");
-       mqtt.disconnect();
-       delay(5000);  // wait 5 seconds
-       retries--;
-       if (retries == 0) {
-         Serial.println("MQTT connection failed after 3 retries. Continuing without MQTT...");
-         return;  // Give up and continue without MQTT
-       }
+  // Single attempt per loop iteration. The previous 3-retry loop with a
+  // delay(5000) between attempts could block this task for up to 15s when
+  // the broker was unreachable, on top of the trailing 5s loop delay --
+  // starving the sensor read cadence. The outer loop already runs every
+  // 5s, so let it provide the retry cadence instead.
+  int8_t ret = mqtt.connect();
+  if (ret != 0) {
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("MQTT connect failed; will retry next loop");
+    mqtt.disconnect();
+    return;
   }
 
   Serial.println("MQTT Connected!");
